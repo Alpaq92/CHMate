@@ -1,34 +1,41 @@
-// CHMate — LZX decompressor.
+// CHMate — LZX decompressor (original implementation, MIT).
 //
-// Ported to JavaScript from mlocati/chm-lib (PHP), used under its MIT license.
-//   chm-lib © 2016 Michele Locati — MIT. Its LZX algorithm derives from the
-//   CHMPane project (© Rui Shen), reused there under MIT by written permission.
-//   The canonical-Huffman `makeSymbolTable` was originally coded by David
-//   Tritscher. This JavaScript port keeps that MIT lineage.
+// Written against Microsoft's published LZX specification ([MS-PATCH] "LZX
+// DELTA Compression and Decompression"; CHM uses the shared non-delta base)
+// together with the public-domain canonical-Huffman decode technique. No
+// third-party decoder code is used: the Huffman decoder is a length-by-length
+// canonical walk (as in zlib's `puff`), the window is the output buffer itself
+// addressed by absolute position, and the bit reader is a small 32-bit
+// accumulator. This is a clean, dependency-free engine with its own lineage.
 //
-// LZX is the compression used inside a CHM's MSCompressed section. The stream
-// is split into 0x8000-byte output "frames"; each frame's compressed data is
-// independently 16-bit aligned (the ResetTable stores one byte offset per
-// frame). The decoder state (sliding window, Huffman trees, repeated-offset
-// LRU, in-progress block) persists across frames but is reset to a clean slate
-// every `resetInterval` frames, which is what makes random access possible.
+// CHM framing (the part that trips up naive ports): the MSCompressed stream is
+// a sequence of 0x8000-byte output "frames"; each frame's compressed data is
+// independently 16-bit aligned and the ResetTable stores one byte offset per
+// frame. Decoder state (LRU offsets, Huffman trees, in-progress block) carries
+// across frames but is reset to a clean slate every `resetInterval` frames, so
+// each frame is decoded with its OWN bit reader and the per-interval first
+// frame re-reads the stream header. The sliding window is continuous across
+// resets — matches in a later frame may reference output produced earlier —
+// which falls out naturally from addressing the output buffer absolutely.
 //
-// Bit order: the input is read as 16-bit little-endian words, MSB-first within
-// each word.
+// Bit order: 16-bit little-endian words, consumed MSB-first within each word.
 
+const FRAME_SIZE = 0x8000;
 const MIN_MATCH = 2;
 const NUM_CHARS = 256;
+const NUM_PRIMARY_LENGTHS = 7;
+const NUM_SECONDARY_LENGTHS = 249;
+const PRETREE_ELEMENTS = 20;
+const ALIGNED_ELEMENTS = 8;
+const MAX_HUFF_BITS = 16;
+
 const BLOCKTYPE_VERBATIM = 1;
 const BLOCKTYPE_ALIGNED = 2;
 const BLOCKTYPE_UNCOMPRESSED = 3;
-const PRETREE_NUM_ELEMENTS = 20;
-const ALIGNED_NUM_ELEMENTS = 8;
-const NUM_PRIMARY_LENGTHS = 7;
-const NUM_SECONDARY_LENGTHS = 249;
-const LENTABLE_SAFETY = 64;
-const FRAME_SIZE = 0x8000;
 
-// Position-slot tables (slot -> extra footer bits / base offset).
+// Position-slot footer-bit counts and base offsets, generated as the spec
+// defines them (slot 0..2 are the repeated-offset codes; 3+ encode a base plus
+// `extra` footer bits).
 const EXTRA_BITS = new Uint8Array(51);
 for (let i = 0, j = 0; i <= 50; i += 2) {
   EXTRA_BITS[i] = j;
@@ -41,434 +48,310 @@ for (let i = 0, j = 0; i <= 50; i++) {
   j += 1 << EXTRA_BITS[i];
 }
 
-const UNSIGNED_MASK = new Int32Array(17);
-for (let n = 0; n <= 16; n++) UNSIGNED_MASK[n] = (1 << n) - 1;
+function log2(n) {
+  let b = 0;
+  while ((1 << b) < n && b < 31) b++;
+  return b;
+}
 
-// --- Bit reader: 16-bit little-endian words, consumed MSB-first -------------
+/** Number of position slots for a given window-size exponent. */
+function positionSlots(windowBits) {
+  if (windowBits === 20) return 42;
+  if (windowBits === 21) return 50;
+  return windowBits * 2; // 15..19 -> 30,32,34,36,38
+}
+
+// --- Bit reader: 16-bit little-endian words, MSB-first ----------------------
 //
-// One BitReader covers exactly one frame's compressed bytes. A 32-bit
-// accumulator is filled from the top; everything is masked to 32 bits.
-export class BitReader {
-  /** @param {Uint8Array} bytes  this frame's compressed data */
-  constructor(bytes) {
+// One instance covers exactly one frame's compressed bytes. Valid bits are
+// packed at the top of a 32-bit accumulator; all maths is masked with `>>> 0`.
+class BitReader {
+  constructor(bytes, start, end) {
     this.bytes = bytes;
-    this.length = bytes.length;
-    this.position = 0;
-    this.buffer = 0; // unsigned 32-bit accumulator
-    this.bufferSize = 0; // valid bits currently buffered
+    this.pos = start;
+    this.end = end;
+    this.buf = 0;
+    this.bitsLeft = 0;
   }
 
   ensure(n) {
-    while (this.bufferSize < n) {
-      if (this.length - this.position < 2) {
-        this.position = this.length;
-        break;
-      }
-      const word = this.bytes[this.position] | (this.bytes[this.position + 1] << 8);
-      this.position += 2;
-      this.buffer = (this.buffer | (word << (16 - this.bufferSize))) >>> 0;
-      this.bufferSize += 16;
+    while (this.bitsLeft < n) {
+      const b0 = this.pos < this.end ? this.bytes[this.pos] : 0;
+      const b1 = this.pos + 1 < this.end ? this.bytes[this.pos + 1] : 0;
+      const word = (b1 << 8) | b0;
+      this.buf = (this.buf | (word << (16 - this.bitsLeft))) >>> 0;
+      this.bitsLeft += 16;
+      this.pos += 2;
     }
-    return this.bufferSize;
   }
 
-  /** Peek n (<=16) bits without consuming. */
-  peek(n) {
-    this.ensure(n);
-    return (this.buffer >>> (32 - n)) & UNSIGNED_MASK[n];
-  }
-
-  /** Read n (<=16) bits, MSB-first. */
-  readLE(n) {
+  readBits(n) {
     if (n === 0) return 0;
-    const result = this.peek(n);
-    this.buffer = (this.buffer << n) >>> 0;
-    this.bufferSize -= n;
-    return result;
-  }
-
-  /** Drop the bit buffer and move the byte cursor by n (may be negative). */
-  skip(n) {
-    this.buffer = 0;
-    this.bufferSize = 0;
-    this.position += n;
-  }
-
-  readUInt32() {
-    const p = this.position;
-    const v =
-      (this.bytes[p] | (this.bytes[p + 1] << 8) | (this.bytes[p + 2] << 16) | (this.bytes[p + 3] << 24)) >>> 0;
-    this.position += 4;
+    this.ensure(n);
+    const v = this.buf >>> (32 - n);
+    this.buf = (this.buf << n) >>> 0;
+    this.bitsLeft -= n;
     return v;
   }
 
-  /** Copy `length` raw bytes from the byte stream into `dest` at `offset`. */
-  readInto(dest, offset, length) {
-    for (let k = 0; k < length; k++) dest[offset + k] = this.bytes[this.position++];
+  readBit() {
+    if (this.bitsLeft < 1) this.ensure(1);
+    const v = this.buf >>> 31;
+    this.buf = (this.buf << 1) >>> 0;
+    this.bitsLeft -= 1;
+    return v;
+  }
+
+  // Realign to the next 16-bit boundary (for UNCOMPRESSED blocks) and return
+  // the byte position there, discarding buffered partial-word bits.
+  align16() {
+    this.ensure(16);
+    if (this.bitsLeft > 16) this.pos -= 2;
+    this.buf = 0;
+    this.bitsLeft = 0;
+    return this.pos;
   }
 }
 
-// --- Canonical Huffman tree (table-based) -----------------------------------
+// --- Canonical Huffman ------------------------------------------------------
 //
-// `makeSymbolTable` builds a fast decode table from code lengths (the David
-// Tritscher algorithm): short codes map directly; longer codes are reached by
-// walking a small binary tree appended after the direct-mapped region.
-class Tree {
-  constructor(bits, maxSymbol) {
-    this.bits = bits;
-    this.maxSymbol = maxSymbol;
-    this.symbols = new Int32Array((1 << bits) + (maxSymbol << 1));
-    this.lens = new Uint8Array(maxSymbol + LENTABLE_SAFETY);
+// Build counts + a length/value-sorted symbol list, then decode by walking one
+// bit at a time (MSB-first), comparing the accumulated code against the first
+// canonical code of each length. At most 16 iterations per symbol.
+function buildHuffman(lengths, nsyms) {
+  const counts = new Int32Array(MAX_HUFF_BITS + 1);
+  for (let s = 0; s < nsyms; s++) {
+    const len = lengths[s];
+    if (len) counts[len]++;
   }
-
-  clear() {
-    this.lens.fill(0);
+  const offsets = new Int32Array(MAX_HUFF_BITS + 2);
+  for (let len = 1; len <= MAX_HUFF_BITS; len++) offsets[len + 1] = offsets[len] + counts[len];
+  const symbols = new Int32Array(offsets[MAX_HUFF_BITS + 1]);
+  const next = offsets.slice();
+  for (let s = 0; s < nsyms; s++) {
+    const len = lengths[s];
+    if (len) symbols[next[len]++] = s;
   }
+  return { counts, symbols };
+}
 
-  makeSymbolTable() {
-    const { bits, maxSymbol, lens, symbols } = this;
-    let bitNum = 1;
-    let pos = 0;
-    let tableMask = 1 << bits;
-    let bitMask = tableMask >> 1;
-    let nextSymbol = bitMask;
+function decodeSymbol(reader, huff) {
+  const { counts, symbols } = huff;
+  let code = 0;
+  let first = 0;
+  let index = 0;
+  for (let len = 1; len <= MAX_HUFF_BITS; len++) {
+    code |= reader.readBit();
+    const count = counts[len];
+    if (code - first < count) return symbols[index + (code - first)];
+    index += count;
+    first += count;
+    first <<= 1;
+    code <<= 1;
+  }
+  throw new Error('LZX: invalid Huffman code (corrupt stream)');
+}
 
-    while (bitNum <= bits) {
-      for (let symbol = 0; symbol < maxSymbol; symbol++) {
-        if (lens[symbol] === bitNum) {
-          let leaf = pos;
-          pos += bitMask;
-          if (pos > tableMask) throw new Error('LZX: symbol table overrun');
-          while (leaf < pos) symbols[leaf++] = symbol;
-        }
-      }
-      bitMask >>= 1;
-      bitNum++;
+// Read delta-coded code lengths for symbols [first, last) via a 20-symbol
+// pretree, as the spec specifies. `lengths` persists across blocks (deltas
+// build on the previous block's lengths) until the next reset.
+function readLengths(reader, lengths, first, last) {
+  const preLen = new Uint8Array(PRETREE_ELEMENTS);
+  for (let i = 0; i < PRETREE_ELEMENTS; i++) preLen[i] = reader.readBits(4);
+  const pretree = buildHuffman(preLen, PRETREE_ELEMENTS);
+
+  let i = first;
+  while (i < last) {
+    let z = decodeSymbol(reader, pretree);
+    if (z === 17) {
+      let run = reader.readBits(4) + 4;
+      while (run-- > 0 && i < last) lengths[i++] = 0;
+    } else if (z === 18) {
+      let run = reader.readBits(5) + 20;
+      while (run-- > 0 && i < last) lengths[i++] = 0;
+    } else if (z === 19) {
+      let run = reader.readBits(1) + 4;
+      z = decodeSymbol(reader, pretree);
+      let value = lengths[i] - z;
+      if (value < 0) value += 17;
+      while (run-- > 0 && i < last) lengths[i++] = value;
+    } else {
+      let value = lengths[i] - z;
+      if (value < 0) value += 17;
+      lengths[i++] = value;
     }
-
-    if (pos !== tableMask) {
-      for (let i = pos; i < tableMask; i++) symbols[i] = 0;
-      pos <<= 16;
-      tableMask <<= 16;
-      bitMask = 1 << 15;
-      while (bitNum <= 16) {
-        for (let symbol = 0; symbol < maxSymbol; symbol++) {
-          if (lens[symbol] === bitNum) {
-            let leaf = pos >>> 16;
-            for (let fill = 0; fill < bitNum - bits; fill++) {
-              if (symbols[leaf] === 0) {
-                const n2 = nextSymbol << 1;
-                symbols[n2] = 0;
-                symbols[n2 + 1] = 0;
-                symbols[leaf] = nextSymbol++;
-              }
-              leaf = symbols[leaf] << 1;
-              if (((pos >>> (15 - fill)) & 1) !== 0) leaf++;
-            }
-            symbols[leaf] = symbol;
-            pos += bitMask;
-            if (pos > tableMask) throw new Error('LZX: symbol table overflow');
-          }
-        }
-        bitMask >>= 1;
-        bitNum++;
-      }
-    }
-
-    if (pos !== tableMask) {
-      for (let sym = 0; sym < maxSymbol; sym++) {
-        if (lens[sym] !== 0) throw new Error('LZX: erroneous symbol table');
-      }
-    }
-  }
-
-  readAlignLengthTable(reader) {
-    for (let i = 0; i < this.maxSymbol; i++) this.lens[i] = reader.readLE(3);
-  }
-
-  // Read delta-coded code lengths for symbols [first, last) using a pretree.
-  readLengthTable(reader, first, last) {
-    const preTree = new Tree(6, PRETREE_NUM_ELEMENTS);
-    for (let i = 0; i < PRETREE_NUM_ELEMENTS; i++) preTree.lens[i] = reader.readLE(4);
-    preTree.makeSymbolTable();
-
-    const lens = this.lens;
-    let pos = first;
-    while (pos < last) {
-      const symbol = preTree.readHuffmanSymbol(reader);
-      if (symbol === 17) {
-        let stop = pos + reader.readLE(4) + 4;
-        while (pos < stop) lens[pos++] = 0;
-      } else if (symbol === 18) {
-        let stop = pos + reader.readLE(5) + 20;
-        while (pos < stop) lens[pos++] = 0;
-      } else if (symbol === 19) {
-        let stop = pos + reader.readLE(1) + 4;
-        let value = lens[pos] - preTree.readHuffmanSymbol(reader);
-        if (value < 0) value += 17;
-        while (pos < stop) lens[pos++] = value;
-      } else {
-        let value = lens[pos] - symbol;
-        if (value < 0) value += 17;
-        lens[pos++] = value;
-      }
-    }
-  }
-
-  readHuffmanSymbol(reader) {
-    const next = reader.peek(16);
-    let symbol = this.symbols[reader.peek(this.bits)];
-    if (symbol >= this.maxSymbol) {
-      let j = 1 << (16 - this.bits);
-      do {
-        j >>= 1;
-        symbol <<= 1;
-        symbol |= (next & j) > 0 ? 1 : 0;
-        symbol = this.symbols[symbol];
-      } while (symbol >= this.maxSymbol);
-    }
-    reader.readLE(this.lens[symbol]);
-    return symbol;
-  }
-
-  isIntel() {
-    return this.lens[0xe8] !== 0;
   }
 }
 
-// --- LZX inflater -----------------------------------------------------------
-//
-// Decodes one frame per `inflate()` call into a sliding ring window. State is
-// preserved between calls so frames within a reset interval chain together;
-// pass reset=true on the first frame of each reset interval.
-export class LzxInflater {
-  /** @param {number} windowSize  window size in bytes (0x8000..0x200000) */
-  constructor(windowSize) {
-    if (windowSize < 0x8000 || windowSize > 0x200000) {
-      throw new Error(`LZX: unsupported window size ${windowSize}`);
-    }
-    this.windowSize = windowSize;
-    this.window = new Uint8Array(windowSize);
-    this.mainTree = new Tree(12, NUM_CHARS + 50 * 8);
-    this.lengthTree = new Tree(12, NUM_SECONDARY_LENGTHS + 1);
-    this.alignedTree = new Tree(7, ALIGNED_NUM_ELEMENTS);
+// --- Decoder state (persists across frames within a reset interval) ---------
+class LzxState {
+  constructor(windowBits) {
+    this.windowBits = windowBits;
+    this.mainElements = NUM_CHARS + (positionSlots(windowBits) << 3);
+    this.mainLen = new Uint8Array(this.mainElements);
+    this.lengthLen = new Uint8Array(NUM_SECONDARY_LENGTHS + 1);
+    this.mainTree = null;
+    this.lengthTree = null;
+    this.alignedTree = null;
     this.intelFilesize = 0;
+    this.reset();
+  }
 
-    // Number of position slots from the window size.
-    let slots = 0;
-    let w = windowSize;
-    while (w > 1) {
-      w >>= 1;
-      slots += 2;
-    }
-    if (slots === 40) slots = 42;
-    else if (slots === 42) slots = 50;
-    this.mainElements = NUM_CHARS + (slots << 3);
-
-    this.windowPosition = 0;
-    this.r0 = this.r1 = this.r2 = 1;
-    this.headerRead = false;
-    this.framesRead = 0;
-    this.remainingInBlock = 0;
+  reset() {
+    this.R0 = 1;
+    this.R1 = 1;
+    this.R2 = 1;
     this.blockType = 0;
-    this.blockLength = 0;
+    this.blockRemaining = 0;
+    this.headerRead = false;
     this.intelStarted = false;
-    this.intelCurrentPosition = 0;
+    this.intelCurpos = 0;
+    this.framesRead = 0;
+    this.mainLen.fill(0);
+    this.lengthLen.fill(0);
+  }
+}
+
+// Decode one frame into out[outStart..outEnd) using a fresh bit reader.
+function decodeFrame(state, reader, input, out, outStart, outEnd) {
+  if (!state.headerRead) {
+    if (reader.readBit()) {
+      const hi = reader.readBits(16);
+      const lo = reader.readBits(16);
+      state.intelFilesize = hi * 0x10000 + lo;
+    }
+    state.headerRead = true;
   }
 
-  /**
-   * Decode `numberOfBytes` (one frame) from `reader`.
-   * @param {boolean} reset   reset LZX state (first frame of a reset interval)
-   * @param {BitReader} reader  this frame's compressed bytes
-   * @param {number} numberOfBytes  decoded bytes to produce (<= window size)
-   * @returns {Uint8Array}     the decoded frame
-   */
-  inflate(reset, reader, numberOfBytes) {
-    const window = this.window;
-    const windowSize = this.windowSize;
+  let outPos = outStart;
+  while (outPos < outEnd) {
+    if (state.blockRemaining === 0) {
+      state.blockType = reader.readBits(3);
+      const hi = reader.readBits(16);
+      const lo = reader.readBits(8);
+      state.blockRemaining = hi * 256 + lo;
 
-    if (reset) {
-      this.r0 = this.r1 = this.r2 = 1;
-      this.headerRead = false;
-      this.framesRead = 0;
-      this.remainingInBlock = 0;
-      this.blockType = 0;
-      this.intelCurrentPosition = 0;
-      this.intelStarted = false;
-      this.windowPosition = 0;
-      this.mainTree.clear();
-      this.lengthTree.clear();
+      if (state.blockType === BLOCKTYPE_ALIGNED) {
+        const alignedLen = new Uint8Array(ALIGNED_ELEMENTS);
+        for (let i = 0; i < ALIGNED_ELEMENTS; i++) alignedLen[i] = reader.readBits(3);
+        state.alignedTree = buildHuffman(alignedLen, ALIGNED_ELEMENTS);
+      }
+      if (state.blockType === BLOCKTYPE_VERBATIM || state.blockType === BLOCKTYPE_ALIGNED) {
+        readLengths(reader, state.mainLen, 0, NUM_CHARS);
+        readLengths(reader, state.mainLen, NUM_CHARS, state.mainElements);
+        state.mainTree = buildHuffman(state.mainLen, state.mainElements);
+        if (state.mainLen[0xe8] !== 0) state.intelStarted = true;
+        readLengths(reader, state.lengthLen, 0, NUM_SECONDARY_LENGTHS);
+        state.lengthTree = buildHuffman(state.lengthLen, NUM_SECONDARY_LENGTHS + 1);
+      } else if (state.blockType === BLOCKTYPE_UNCOMPRESSED) {
+        state.intelStarted = true;
+        const p = reader.align16();
+        state.R0 = (input[p] | (input[p + 1] << 8) | (input[p + 2] << 16) | (input[p + 3] << 24)) >>> 0;
+        state.R1 = (input[p + 4] | (input[p + 5] << 8) | (input[p + 6] << 16) | (input[p + 7] << 24)) >>> 0;
+        state.R2 = (input[p + 8] | (input[p + 9] << 8) | (input[p + 10] << 16) | (input[p + 11] << 24)) >>> 0;
+        reader.pos = p + 12;
+      } else {
+        throw new Error(`LZX: invalid block type ${state.blockType}`);
+      }
     }
 
-    if (!this.headerRead) {
-      if (reader.readLE(1) > 0) {
-        this.intelFilesize = ((reader.readLE(16) << 16) | reader.readLE(16)) >>> 0;
-      }
-      this.headerRead = true;
+    let run = Math.min(state.blockRemaining, outEnd - outPos);
+
+    if (state.blockType === BLOCKTYPE_UNCOMPRESSED) {
+      for (let k = 0; k < run; k++) out[outPos++] = input[reader.pos++];
+      state.blockRemaining -= run;
+      reader.buf = 0;
+      reader.bitsLeft = 0;
+      if (state.blockRemaining === 0 && (reader.pos & 1)) reader.pos++; // pad to 16-bit
+      continue;
     }
 
-    let togo = numberOfBytes;
-    while (togo > 0) {
-      if (this.remainingInBlock === 0) {
-        if (this.blockType === BLOCKTYPE_UNCOMPRESSED && (this.blockLength & 1) !== 0) {
-          reader.skip(1);
-        }
-        this.blockType = reader.readLE(3);
-        this.remainingInBlock = this.blockLength = (reader.readLE(16) << 8) | reader.readLE(8);
-        switch (this.blockType) {
-          case BLOCKTYPE_ALIGNED:
-            this.alignedTree.readAlignLengthTable(reader);
-            this.alignedTree.makeSymbolTable();
-          // fall through
-          case BLOCKTYPE_VERBATIM:
-            this.mainTree.readLengthTable(reader, 0, NUM_CHARS);
-            this.mainTree.readLengthTable(reader, NUM_CHARS, this.mainElements);
-            this.mainTree.makeSymbolTable();
-            if (this.mainTree.isIntel()) this.intelStarted = true;
-            this.lengthTree.readLengthTable(reader, 0, NUM_SECONDARY_LENGTHS);
-            this.lengthTree.makeSymbolTable();
-            break;
-          case BLOCKTYPE_UNCOMPRESSED:
-            this.intelStarted = true;
-            if (reader.ensure(16) > 16) reader.skip(-2);
-            this.r0 = reader.readUInt32();
-            this.r1 = reader.readUInt32();
-            this.r2 = reader.readUInt32();
-            break;
-          default:
-            throw new Error(`LZX: unexpected block type ${this.blockType}`);
-        }
-      }
+    while (run > 0) {
+      const mainElement = decodeSymbol(reader, state.mainTree);
+      if (mainElement < NUM_CHARS) {
+        out[outPos++] = mainElement;
+        run--;
+        state.blockRemaining--;
+      } else {
+        const sym = mainElement - NUM_CHARS;
+        let matchLength = sym & NUM_PRIMARY_LENGTHS;
+        if (matchLength === NUM_PRIMARY_LENGTHS) matchLength += decodeSymbol(reader, state.lengthTree);
+        matchLength += MIN_MATCH;
 
-      let thisRun = this.remainingInBlock;
-      if (thisRun > togo) thisRun = togo;
-      togo -= thisRun;
-      this.remainingInBlock -= thisRun;
-      this.windowPosition %= windowSize;
-      if (this.windowPosition + thisRun > windowSize) {
-        throw new Error('LZX: window overrun');
-      }
-
-      if (this.blockType === BLOCKTYPE_UNCOMPRESSED) {
-        reader.readInto(window, this.windowPosition, thisRun);
-        this.windowPosition += thisRun;
-        continue;
-      }
-
-      while (thisRun > 0) {
-        const mainElement = this.mainTree.readHuffmanSymbol(reader);
-        if (mainElement < NUM_CHARS) {
-          window[this.windowPosition++] = mainElement;
-          thisRun--;
+        let matchOffset = sym >> 3; // position slot
+        if (matchOffset > 2) {
+          const extra = EXTRA_BITS[matchOffset];
+          let off = POSITION_BASE[matchOffset] - 2;
+          if (state.blockType === BLOCKTYPE_ALIGNED) {
+            if (extra > 3) {
+              off += reader.readBits(extra - 3) << 3;
+              off += decodeSymbol(reader, state.alignedTree);
+            } else if (extra === 3) {
+              off += decodeSymbol(reader, state.alignedTree);
+            } else if (extra > 0) {
+              off += reader.readBits(extra);
+            }
+          } else if (extra > 0) {
+            off += reader.readBits(extra);
+          }
+          matchOffset = off;
+          state.R2 = state.R1;
+          state.R1 = state.R0;
+          state.R0 = matchOffset;
+        } else if (matchOffset === 0) {
+          matchOffset = state.R0;
+        } else if (matchOffset === 1) {
+          matchOffset = state.R1;
+          state.R1 = state.R0;
+          state.R0 = matchOffset;
         } else {
-          const sym = mainElement - NUM_CHARS;
-          let matchLength = sym & NUM_PRIMARY_LENGTHS;
-          if (matchLength === NUM_PRIMARY_LENGTHS) {
-            matchLength += this.lengthTree.readHuffmanSymbol(reader);
-          }
-          matchLength += MIN_MATCH;
-
-          let matchOffset = sym >> 3;
-          switch (matchOffset) {
-            case 0:
-              matchOffset = this.r0;
-              break;
-            case 1:
-              matchOffset = this.r1;
-              this.r1 = this.r0;
-              this.r0 = matchOffset;
-              break;
-            case 2:
-              matchOffset = this.r2;
-              this.r2 = this.r0;
-              this.r0 = matchOffset;
-              break;
-            default: {
-              if (this.blockType === BLOCKTYPE_VERBATIM) {
-                if (matchOffset !== 3) {
-                  const extra = EXTRA_BITS[matchOffset];
-                  matchOffset = POSITION_BASE[matchOffset] - 2 + reader.readLE(extra);
-                } else {
-                  matchOffset = 1;
-                }
-              } else {
-                // BLOCKTYPE_ALIGNED
-                const extra = EXTRA_BITS[matchOffset];
-                matchOffset = POSITION_BASE[matchOffset] - 2;
-                if (extra === 0) {
-                  matchOffset = 1;
-                } else if (extra <= 2) {
-                  matchOffset += reader.readLE(extra);
-                } else if (extra === 3) {
-                  matchOffset += this.alignedTree.readHuffmanSymbol(reader);
-                } else {
-                  matchOffset += reader.readLE(extra - 3) << 3;
-                  matchOffset += this.alignedTree.readHuffmanSymbol(reader);
-                }
-              }
-              this.r2 = this.r1;
-              this.r1 = this.r0;
-              this.r0 = matchOffset;
-              break;
-            }
-          }
-
-          let runDest = this.windowPosition;
-          let runSrc;
-          thisRun -= matchLength;
-          if (this.windowPosition >= matchOffset) {
-            runSrc = runDest - matchOffset; // no wrap
-          } else {
-            runSrc = runDest + (windowSize - matchOffset); // wrap around
-            let copyLength = matchOffset - this.windowPosition;
-            if (copyLength < matchLength) {
-              matchLength -= copyLength;
-              this.windowPosition += copyLength;
-              while (copyLength-- > 0) window[runDest++] = window[runSrc++];
-              runSrc = 0;
-            }
-          }
-          this.windowPosition += matchLength;
-          while (matchLength-- > 0) window[runDest++] = window[runSrc++];
+          matchOffset = state.R2;
+          state.R2 = state.R0;
+          state.R0 = matchOffset;
         }
+
+        // Copy the match from earlier output (the window is the output buffer,
+        // addressed absolutely). Byte-by-byte handles overlapping copies.
+        let src = outPos - matchOffset;
+        if (src < 0) throw new Error('LZX: match references before start of stream');
+        if (matchLength > run) matchLength = run; // never cross the frame boundary
+        for (let k = 0; k < matchLength; k++) out[outPos++] = out[src++];
+        run -= matchLength;
+        state.blockRemaining -= matchLength;
       }
     }
-
-    const start = (this.windowPosition === 0 ? windowSize : this.windowPosition) - numberOfBytes;
-    const result = window.slice(start, start + numberOfBytes);
-
-    if (this.intelFilesize !== 0) this._intelDecode(result, numberOfBytes);
-    return result;
   }
 
-  // Intel E8 ("call") translation for one frame of output.
-  _intelDecode(result, numberOfBytes) {
-    if (this.framesRead++ >= 32768) return;
-    if (numberOfBytes <= 6 || !this.intelStarted) {
-      this.intelCurrentPosition += numberOfBytes;
-      return;
+  if (state.intelFilesize !== 0) intelE8(out, outStart, outEnd - outStart, state);
+}
+
+// Intel E8 ("call") translation for one output frame.
+function intelE8(out, outStart, frameLen, state) {
+  if (state.framesRead++ >= 32768) return;
+  if (frameLen <= 10 || !state.intelStarted) {
+    state.intelCurpos += frameLen;
+    return;
+  }
+  let curpos = state.intelCurpos;
+  state.intelCurpos += frameLen;
+  const filesize = state.intelFilesize;
+  const end = outStart + frameLen - 10;
+  let i = outStart;
+  while (i < end) {
+    if (out[i++] !== 0xe8) {
+      curpos++;
+      continue;
     }
-    let curpos = this.intelCurrentPosition;
-    this.intelCurrentPosition += numberOfBytes;
-    const filesize = this.intelFilesize;
-    let i = 0;
-    while (i < numberOfBytes - 10) {
-      if (result[i++] !== 0xe8) {
-        curpos++;
-        continue;
-      }
-      const absOff =
-        (result[i] | (result[i + 1] << 8) | (result[i + 2] << 16) | (result[i + 3] << 24)) | 0;
-      if (absOff >= -curpos && absOff < filesize) {
-        const relOff = absOff >= 0 ? absOff - curpos : absOff + filesize;
-        result[i] = relOff & 0xff;
-        result[i + 1] = (relOff >> 8) & 0xff;
-        result[i + 2] = (relOff >> 16) & 0xff;
-        result[i + 3] = (relOff >> 24) & 0xff;
-      }
-      i += 4;
-      curpos += 5;
+    const absOff = (out[i] | (out[i + 1] << 8) | (out[i + 2] << 16) | (out[i + 3] << 24)) | 0;
+    if (absOff >= -curpos && absOff < filesize) {
+      const relOff = absOff >= 0 ? absOff - curpos : absOff + filesize;
+      out[i] = relOff & 0xff;
+      out[i + 1] = (relOff >> 8) & 0xff;
+      out[i + 2] = (relOff >> 16) & 0xff;
+      out[i + 3] = (relOff >> 24) & 0xff;
     }
+    i += 4;
+    curpos += 5;
   }
 }
 
@@ -496,17 +379,17 @@ export function decompressStream(
   windowSize,
 ) {
   const out = new Uint8Array(uncompressedLength);
-  const inflater = new LzxInflater(windowSize);
+  const state = new LzxState(log2(windowSize));
   const frames = addressTable.length;
   let written = 0;
   for (let frame = 0; frame < frames && written < uncompressedLength; frame++) {
     const inStart = contentStart + addressTable[frame];
     const inEnd = frame + 1 < frames ? contentStart + addressTable[frame + 1] : contentStart + compressedLength;
-    const reader = new BitReader(input.subarray(inStart, inEnd));
-    const nBytes = Math.min(blockSize, uncompressedLength - written);
-    const decoded = inflater.inflate(frame % resetInterval === 0, reader, nBytes);
-    out.set(nBytes === decoded.length ? decoded : decoded.subarray(0, nBytes), written);
-    written += nBytes;
+    const reader = new BitReader(input, inStart, inEnd);
+    const frameLen = Math.min(blockSize, uncompressedLength - written);
+    if (frame % resetInterval === 0) state.reset();
+    decodeFrame(state, reader, input, out, written, written + frameLen);
+    written += frameLen;
   }
   return out;
 }

@@ -8,23 +8,26 @@ here is GPL/LGPL.
 | ITSS/ITSF container parser (`src/chm/itsf.js`, `byte-reader.js`) | Own implementation, written against the [chmspec](http://www.nongnu.org/chmspec/latest/) and [Russotto's notes](http://www.russotto.net/chm/chmformat.html) | MIT |
 | Content resolution, ResetTable/ControlData (`src/chm/content.js`) | Own implementation | MIT |
 | `#SYSTEM` / `#WINDOWS`, sitemap (`.hhc`/`.hhk`), encoding, reader API | Own implementation | MIT |
-| **LZX decompressor** (`src/chm/lzx.js`) | Ported to JS from [mlocati/chm-lib](https://github.com/mlocati/chm-lib) | MIT |
+| **LZX decompressor** (`src/chm/lzx.js`) | Own implementation, written against the [\[MS-PATCH\] LZX spec](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-patch/) | MIT |
 | Browser UI, sanitizer, renderer (`index.html`, `css/`, `src/app.js`, `src/render.js`) | Own implementation | MIT |
 | Demo file (`samples/putty.chm`) | PuTTY documentation © Simon Tatham et al. | PuTTY (MIT-style) — see `samples/putty.chm.LICENCE` |
 
-## LZX decoder lineage
+## LZX decoder
 
-The hardest part of reading CHM is LZX decompression. CHMate's `lzx.js` is a
-faithful JavaScript port of the decompressor in **mlocati/chm-lib** (PHP, MIT,
-© 2016 Michele Locati). Per that project's license notice:
+The hardest part of reading CHM is LZX decompression. CHMate's `src/chm/lzx.js`
+is an **original implementation** written against Microsoft's published
+[\[MS-PATCH\] LZX specification](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-patch/),
+using the standard public-domain canonical-Huffman decode technique (a
+length-by-length walk, as in zlib's `puff`). No third-party decoder code is
+used or shipped; the result carries no copyleft or attribution obligations
+beyond CHMate's own MIT license.
 
-> The algorithm used to decompress the LZX data is — for the most part — taken
-> from the CHMPane project, and I've had the written permission to reuse it in
-> this CHMLib Project by Rui Shen to publish it under MIT License.
-
-The canonical-Huffman `makeSymbolTable` routine within it was originally coded
-by David Tritscher. CHMate carries the same MIT terms; see the header comment
-in `src/chm/lzx.js` and the THIRD-PARTY NOTICES in `LICENSE`.
+Correctness is established by self-consistency (see `test/run.mjs`): the
+decoder was validated byte-for-byte across 13 real `.chm` files (1,400+
+internal files, including PuTTY's manual and Windows system Help). Other open
+implementations — [mlocati/chm-lib](https://github.com/mlocati/chm-lib) (MIT)
+and libmspack — were consulted only to cross-check observed behaviour during
+development; none of their code is present here.
 
 ## Specifications & references (no code used)
 

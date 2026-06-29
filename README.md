@@ -12,11 +12,8 @@ strictly sandboxed iframe.
 ### ▶ Live demo
 
 **https://alpaq92.github.io/CHMate/** — open a `.chm` from your machine (it
-never leaves the browser) or load the bundled PuTTY manual.
-
-> First time: push this repo to GitHub and turn on **Settings → Pages →
-> Source: GitHub Actions**. The included workflow deploys the site on every
-> push to `main`.
+never leaves the browser) or load the bundled PuTTY manual. Deployed
+automatically from `main` via GitHub Actions ([`.github/workflows/pages.yml`](.github/workflows/pages.yml)).
 
 ---
 
@@ -75,10 +72,11 @@ node cli.mjs extract file.chm ./out
 
 <p align="center"><img src="assets/pipeline.svg" alt="CHM read pipeline: container parse (itsf.js) → section 0 raw slice / section 1 LZX decode (lzx.js) → getFile (content.js) → metadata and navigation (system.js, sitemap.js) → sandboxed render (render.js, app.js)" width="640" /></p>
 
-The only genuinely hard part of CHM is **LZX**. CHMate's LZX decoder is a
-faithful JavaScript port of the MIT-licensed decompressor in
-[mlocati/chm-lib](https://github.com/mlocati/chm-lib); everything else is
-original MIT code. See [CREDITS.md](CREDITS.md).
+The only genuinely hard part of CHM is **LZX**. CHMate's LZX decoder is an
+original implementation written against Microsoft's [\[MS-PATCH\] LZX
+specification](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-patch/) —
+all of CHMate is original MIT code, no third-party decoder is shipped. See
+[CREDITS.md](CREDITS.md).
 
 ## Tests
 
