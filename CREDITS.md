@@ -15,12 +15,12 @@ here is GPL/LGPL.
 ## LZX decoder
 
 The hardest part of reading CHM is LZX decompression. CHMate's `src/chm/lzx.js`
-is an **original implementation** written against Microsoft's published
-[\[MS-PATCH\] LZX specification](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-patch/),
+is an **original implementation** written from scratch against Microsoft's
+published [\[MS-PATCH\] LZX specification](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-patch/),
 using the standard public-domain canonical-Huffman decode technique (a
-length-by-length walk, as in zlib's `puff`). No third-party decoder code is
-used or shipped; the result carries no copyleft or attribution obligations
-beyond CHMate's own MIT license.
+length-by-length walk over the code lengths, as in zlib's `puff`). No
+third-party decoder code is used or shipped; the result carries no copyleft or
+attribution obligations beyond CHMate's own MIT license.
 
 Correctness is established by self-consistency (see `test/run.mjs`): the
 decoder was validated byte-for-byte across 13 real `.chm` files (1,400+

@@ -72,10 +72,10 @@ node cli.mjs extract file.chm ./out
 
 <p align="center"><img src="assets/pipeline.svg" alt="CHM read pipeline: container parse (itsf.js) → section 0 raw slice / section 1 LZX decode (lzx.js) → getFile (content.js) → metadata and navigation (system.js, sitemap.js) → sandboxed render (render.js, app.js)" width="640" /></p>
 
-The only genuinely hard part of CHM is **LZX**. CHMate's LZX decoder is an
-original implementation written against Microsoft's [\[MS-PATCH\] LZX
-specification](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-patch/) —
-all of CHMate is original MIT code, no third-party decoder is shipped. See
+The only genuinely hard part of CHM is **LZX** decompression. CHMate's LZX
+decoder is an original implementation written from scratch against Microsoft's
+published [\[MS-PATCH\] LZX specification](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-patch/) —
+all of CHMate is original MIT code, and no third-party decoder is shipped. See
 [CREDITS.md](CREDITS.md).
 
 ## Tests
