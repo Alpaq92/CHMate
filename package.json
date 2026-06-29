@@ -1,0 +1,34 @@
+{
+  "name": "chmate",
+  "version": "1.0.0",
+  "description": "CHMate — a pure-JavaScript Microsoft Compiled HTML Help (.chm) reader. No native modules, no WASM.",
+  "type": "module",
+  "license": "MIT",
+  "author": "CHMate",
+  "keywords": ["chm", "html-help", "itss", "itsf", "lzx", "pure-js", "reader"],
+  "exports": {
+    ".": "./src/chm/chm-reader.js"
+  },
+  "bin": {
+    "chmate": "./cli.mjs"
+  },
+  "scripts": {
+    "serve": "node tools/serve.mjs",
+    "start": "node tools/serve.mjs",
+    "test": "node test/run.mjs",
+    "cli": "node cli.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "src",
+    "css",
+    "tools",
+    "cli.mjs",
+    "index.html",
+    "README.md",
+    "LICENSE",
+    "CREDITS.md"
+  ]
+}

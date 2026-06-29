@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "chmate",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["tools/serve.mjs", "8099"],
+      "port": 8099
+    }
+  ]
+}
