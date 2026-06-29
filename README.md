@@ -73,20 +73,7 @@ node cli.mjs extract file.chm ./out
 
 ## How a CHM is read
 
-```
-.chm  ─►  ITSF header ─► ITSP directory ─► PMGL entries        (container, src/chm/itsf.js)
-                                              │
-                 section 0 (uncompressed) ────┤── raw slice
-                 section 1 (MSCompressed) ────┘── LZX stream
-                                              │
-        ControlData (LZXC) + ResetTable  ─►  LZX decode by frame   (src/chm/lzx.js)
-                                              │
-                            getFile(path) ─►  bytes               (src/chm/content.js)
-                                              │
-   #SYSTEM / .hhc / .hhk  ─► title, default topic, TOC, index    (system.js, sitemap.js)
-                                              │
-                   sanitize + blob: URLs ─►  sandboxed iframe     (src/render.js, app.js)
-```
+<p align="center"><img src="assets/pipeline.svg" alt="CHM read pipeline: container parse (itsf.js) → section 0 raw slice / section 1 LZX decode (lzx.js) → getFile (content.js) → metadata and navigation (system.js, sitemap.js) → sandboxed render (render.js, app.js)" width="640" /></p>
 
 The only genuinely hard part of CHM is **LZX**. CHMate's LZX decoder is a
 faithful JavaScript port of the MIT-licensed decompressor in

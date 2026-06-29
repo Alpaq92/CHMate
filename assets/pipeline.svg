@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="652" height="500" viewBox="0 0 652 500" role="img" aria-label="How CHMate reads a CHM file: container parse, LZX decode, getFile, metadata, sandboxed render">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="#2f9f80"/>
+    </marker>
+    <style>
+      .sans { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
+      .mono { font-family: 'Consolas', 'SF Mono', ui-monospace, monospace; }
+      .title { font-size: 14px; font-weight: 600; fill: #e8e8ec; }
+      .sub { font-size: 11.5px; fill: #9b9ba6; }
+      .file { font-size: 11px; fill: #5dcaa5; }
+      .chiptitle { font-size: 12px; font-weight: 600; fill: #cdeee3; }
+      .chipsub { font-size: 10.5px; fill: #84b5a6; }
+      .code { font-size: 13px; fill: #38d9a9; font-weight: 600; }
+    </style>
+  </defs>
+
+  <rect x="1" y="1" width="650" height="498" rx="14" fill="#131318" stroke="#2a2a31"/>
+
+  <!-- connectors -->
+  <g fill="none" stroke="#2f9f80" stroke-width="1.6" marker-end="url(#ah)">
+    <path d="M260 58 V 80"/>                       <!-- chm -> container -->
+    <path d="M236 130 L 168 150"/>                 <!-- container -> section0 -->
+    <path d="M284 130 L 356 150"/>                 <!-- container -> section1 -->
+    <path d="M362 192 V 212"/>                      <!-- section1 -> lzx -->
+    <path d="M362 262 L 322 284"/>                  <!-- lzx -> getFile -->
+    <path d="M162 192 L 196 284"/>                  <!-- section0 -> getFile -->
+    <path d="M260 334 V 356"/>                       <!-- getFile -> metadata -->
+    <path d="M260 406 V 428"/>                        <!-- metadata -> iframe -->
+  </g>
+
+  <!-- 1: .chm -->
+  <rect x="210" y="26" width="100" height="32" rx="8" fill="#0f1a16" stroke="#2b5f4e"/>
+  <text class="mono code" x="260" y="46.5" text-anchor="middle">.chm</text>
+
+  <!-- 2: container -->
+  <rect x="70" y="82" width="380" height="48" rx="9" fill="#1d1d25" stroke="#34343d"/>
+  <text class="sans title" x="86" y="103">Container — ITSS/ITSF</text>
+  <text class="sans sub" x="86" y="120">ITSF header · ITSP directory · PMGL entries</text>
+  <text class="mono file" x="478" y="110">src/chm/itsf.js</text>
+
+  <!-- section chips -->
+  <rect x="70" y="150" width="184" height="42" rx="8" fill="#15211c" stroke="#2b5f4e"/>
+  <text class="sans chiptitle" x="84" y="170">Section 0 · Uncompressed</text>
+  <text class="sans chipsub" x="84" y="185">raw slice of the file</text>
+
+  <rect x="274" y="150" width="176" height="42" rx="8" fill="#15211c" stroke="#2b5f4e"/>
+  <text class="sans chiptitle" x="288" y="170">Section 1 · MSCompressed</text>
+  <text class="sans chipsub" x="288" y="185">one big LZX stream</text>
+
+  <!-- 3: lzx -->
+  <rect x="274" y="214" width="176" height="48" rx="9" fill="#1d1d25" stroke="#34343d"/>
+  <text class="sans title" x="290" y="235">LZX decode</text>
+  <text class="sans sub" x="290" y="252">ControlData + ResetTable · by frame</text>
+  <text class="mono file" x="478" y="242">src/chm/lzx.js</text>
+
+  <!-- 4: getFile -->
+  <rect x="70" y="284" width="380" height="48" rx="9" fill="#1d1d25" stroke="#34343d"/>
+  <text class="mono code" x="86" y="306">getFile(path)</text>
+  <text class="sans sub" x="86" y="322">resolve path → bytes (slice or decompress)</text>
+  <text class="mono file" x="478" y="312">src/chm/content.js</text>
+
+  <!-- 5: metadata -->
+  <rect x="70" y="356" width="380" height="48" rx="9" fill="#1d1d25" stroke="#34343d"/>
+  <text class="sans title" x="86" y="377">Metadata &amp; navigation</text>
+  <text class="sans sub" x="86" y="394">#SYSTEM · .hhc · .hhk → title, default topic, TOC, index</text>
+  <text class="mono file" x="478" y="384">system.js · sitemap.js</text>
+
+  <!-- 6: render -->
+  <rect x="70" y="428" width="380" height="48" rx="9" fill="#1d1d25" stroke="#34343d"/>
+  <text class="sans title" x="86" y="449">Sandboxed render</text>
+  <text class="sans sub" x="86" y="466">sanitize · rewrite to blob: URLs · sandboxed iframe</text>
+  <text class="mono file" x="478" y="456">src/render.js · app.js</text>
+</svg>
