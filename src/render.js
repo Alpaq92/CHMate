@@ -88,6 +88,16 @@ const BASE_STYLE = `
   mark.chm-find { background: #ffd54a; color: #1b1b1f; padding: 0; }
   mark.chm-find.chm-active { background: #ff9d3b; box-shadow: 0 0 0 2px #ff9d3b; }
 
+  /* Thin, modern scrollbars for the topic (no native stepper arrows). */
+  html { scrollbar-width: thin; scrollbar-color: rgba(135,135,150,0.6) transparent; }
+  ::-webkit-scrollbar { width: 12px; height: 12px; }
+  ::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-corner { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(135,135,150,0.6); border-radius: 7px;
+    border: 3px solid transparent; background-clip: padding-box; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(135,135,150,0.85); }
+
   /* Document theme. CHM topics carry arbitrary inline colours, so dark mode is
      a smart-invert filter on the root with media re-inverted back to normal. */
   html[data-theme="dark"] { filter: invert(1) hue-rotate(180deg); }
