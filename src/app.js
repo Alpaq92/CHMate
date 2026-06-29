@@ -4,7 +4,7 @@
 // frame to the ChmReader engine. All heavy lifting (parsing, LZX) lives in
 // ./chm; this file is pure DOM glue.
 
-import { ChmReader } from './chm/chm-reader.js';
+import { ChmReader, stripAnchor } from './chm/chm-reader.js';
 import { renderTopic, BlobCache } from './render.js';
 
 const $ = (id) => document.getElementById(id);
@@ -94,11 +94,8 @@ async function openBuffer(buffer, name) {
     buildFiles(reader);
     enableTools(true);
 
-    const start = reader.defaultTopic && reader.hasFile(reader.defaultTopic)
-      ? reader.defaultTopic
-      : firstHtml(reader);
-    if (start) navigate(start);
-    else status('Opened ' + name + ' — no HTML topic found');
+    // defaultTopic already falls back to the first .htm/.html in the engine.
+    if (reader.defaultTopic && reader.hasFile(reader.defaultTopic)) navigate(reader.defaultTopic);
     status(name + ' — ' + reader.listFiles().length + ' files');
     statusRight(reader.title || '');
   } catch (err) {
@@ -108,10 +105,6 @@ async function openBuffer(buffer, name) {
   } finally {
     showSpinner(false);
   }
-}
-
-function firstHtml(reader) {
-  return reader.listFiles().find((p) => /\.html?$/i.test(p)) || null;
 }
 
 async function openFile(file) {
@@ -284,12 +277,12 @@ function nodeTarget(reader, node) {
   if (node.url) return null; // external; handled only if it's a real topic
   if (!node.local) return null;
   const abs = reader.resolvePath(reader.contentsPath || '/', node.local);
-  return reader.hasFile(stripHash(abs)) ? abs : null;
+  return reader.hasFile(stripAnchor(abs)) ? abs : null;
 }
 
 function highlightToc(path) {
   for (const [p, row] of state.tocRows) {
-    const on = stripHash(p) === path;
+    const on = stripAnchor(p) === path;
     row.classList.toggle('active', on);
     if (on) {
       // Expand ancestors and reveal.
@@ -330,7 +323,7 @@ function buildIndex(reader) {
     div.dataset.search = (it.name || '').toLowerCase();
     if (it.local) {
       const abs = reader.resolvePath(reader.indexPath || '/', it.local);
-      if (reader.hasFile(stripHash(abs))) div.addEventListener('click', () => navigate(abs));
+      if (reader.hasFile(stripAnchor(abs))) div.addEventListener('click', () => navigate(abs));
     }
     host.appendChild(div);
   }
@@ -500,10 +493,6 @@ function statusRight(msg) {
 }
 function dropError(msg) {
   $('dropErr').textContent = msg || '';
-}
-function stripHash(p) {
-  const i = p.indexOf('#');
-  return i >= 0 ? p.slice(0, i) : p;
 }
 
 function switchTab(name) {

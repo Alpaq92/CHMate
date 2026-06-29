@@ -119,8 +119,10 @@ export function parseContainer(bytes) {
   const entries = [];
   // A linear scan of the PMGL leaf chunks is sufficient — PMGI index chunks
   // only accelerate lookups in huge files and are not needed for correctness.
-  for (let chunk = firstPmglChunk; chunk <= lastPmglChunk; chunk++) {
-    if (chunk < 0 || chunk >= totalChunks) continue;
+  // The chunk range is bounded by the actual file so a corrupt header can't
+  // run us off the end.
+  const maxChunk = Math.min(lastPmglChunk, totalChunks - 1, Math.floor((bytes.length - chunksBase) / chunkSize) - 1);
+  for (let chunk = Math.max(0, firstPmglChunk); chunk <= maxChunk; chunk++) {
     const chunkStart = chunksBase + chunk * chunkSize;
     parsePmglChunk(bytes, chunkStart, chunkSize, entries);
   }
@@ -164,25 +166,4 @@ function parsePmglChunk(bytes, chunkStart, chunkSize, entries) {
     const length = r.encint();
     entries.push({ name, section, offset, length });
   }
-}
-
-/**
- * Parse `::DataSpace/NameList` into an array of section names indexed by
- * section number (0 -> "Uncompressed", 1 -> "MSCompressed", ...).
- * @param {Uint8Array} nameListBytes
- * @returns {string[]}
- */
-export function parseNameList(nameListBytes) {
-  const r = new ByteReader(nameListBytes);
-  r.u16(); // length of this file in 16-bit words
-  const count = r.u16();
-  const names = [];
-  for (let i = 0; i < count; i++) {
-    const wordLen = r.u16(); // length in characters, excluding terminator
-    let s = '';
-    for (let j = 0; j < wordLen; j++) s += String.fromCharCode(r.u16());
-    r.u16(); // null terminator
-    names.push(s);
-  }
-  return names;
 }

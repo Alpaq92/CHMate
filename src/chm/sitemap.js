@@ -105,7 +105,6 @@ function makeNode(params) {
   const node = { name: name || '', children: [] };
   if (params['local'] !== undefined) node.local = normaliseLocal(params['local']);
   if (params['url'] !== undefined) node.url = params['url'];
-  if (params['merge'] !== undefined) node.merge = params['merge'];
   return node;
 }
 
@@ -116,13 +115,4 @@ function normaliseLocal(local) {
   const its = p.match(/::(.+)$/);
   if (its) p = its[1];
   return p;
-}
-
-/** Flatten a sitemap tree to its list of (name, local) leaves for searching. */
-export function flattenSitemap(nodes, out = []) {
-  for (const n of nodes) {
-    if (n.local || n.url) out.push(n);
-    if (n.children && n.children.length) flattenSitemap(n.children, out);
-  }
-  return out;
 }

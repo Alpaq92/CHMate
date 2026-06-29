@@ -26,10 +26,10 @@ automatically from `main` via GitHub Actions ([`.github/workflows/pages.yml`](.g
   Help files.
 - **Modern dark reader UI** — Contents / Index / Files sidebar, history
   (back/forward), zoom, find-in-page, print, drag-and-drop, keyboard shortcuts.
-- **Security first** — every topic is sanitized and rendered in a
-  `sandbox`ed iframe with a strict Content-Security-Policy; scripts are
-  stripped, internal resources are served from `blob:` URLs, and the network
-  is blocked so a hostile CHM can't phone home.
+- **Security first** — every untrusted topic is sanitized and rendered inside a
+  fully `sandbox`ed iframe with a strict Content-Security-Policy; scripts are
+  stripped out, internal resources are served from in-memory `blob:` URLs, and
+  the network is blocked so a hostile CHM can't phone home.
 - **Works offline** and as a tiny library or CLI in Node.
 
 ## Run it locally
@@ -102,8 +102,11 @@ hostile:
 - `<script>`, event-handler attributes and `javascript:`/`vbscript:`/`ms-its:`
   URLs are stripped;
 - internal images/stylesheets are rewritten to in-memory `blob:` URLs sourced
-  from inside the CHM; links are intercepted by the host and external ones
-  require confirmation.
+  from inside the CHM; external `url()`s in CSS are dropped; links are
+  intercepted by the host and external ones require confirmation;
+- nested `<frame>`/`<iframe>` content is itself recursively sanitized and given
+  its own CSP (never loaded as raw HTML), so a frameset can't smuggle in a
+  network beacon.
 
 ## License
 

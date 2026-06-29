@@ -111,9 +111,16 @@ export class ChmReader {
     }
     return '/' + resolved.join('/');
   }
+
+  /** First non-meta entry whose name ends with `ext` (e.g. ".htm"). */
+  _firstByExt(ext) {
+    const e = this.dir.entries.find((x) => x.name.toLowerCase().endsWith(ext) && !x.name.startsWith('::'));
+    return e ? e.name : undefined;
+  }
 }
 
-function stripAnchor(p) {
+/** Drop a `#fragment` / `?query` from a CHM path. Shared with the host UI. */
+export function stripAnchor(p) {
   return p.replace(/[#?].*$/, '');
 }
 
@@ -123,17 +130,9 @@ function first(...vals) {
 }
 
 function pickExisting(reader, ...candidates) {
-  for (const c of candidates) {
-    if (!c) continue;
-    const p = normalise(String(c).replace(/\\/g, '/'));
-    if (reader.dir.map.has(p)) return p;
-  }
+  const norm = (c) => normalise(String(c).replace(/\\/g, '/'));
+  for (const c of candidates) if (c && reader.dir.map.has(norm(c))) return norm(c);
   // Fall back to the first non-empty candidate even if not found in the map.
-  for (const c of candidates) if (c) return normalise(String(c).replace(/\\/g, '/'));
+  for (const c of candidates) if (c) return norm(c);
   return undefined;
 }
-
-ChmReader.prototype._firstByExt = function (ext) {
-  const e = this.dir.entries.find((x) => x.section >= 0 && x.name.toLowerCase().endsWith(ext) && !x.name.startsWith('::'));
-  return e ? e.name : undefined;
-};

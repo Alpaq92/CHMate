@@ -61,6 +61,14 @@ export class BlobCache {
     return url;
   }
 
+  /** Cache + return a blob: URL for an HTML string (used for nested frames). */
+  urlForHtml(key, html) {
+    if (this.urls.has(key)) return this.urls.get(key);
+    const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+    this.urls.set(key, url);
+    return url;
+  }
+
   revokeAll() {
     for (const url of this.urls.values()) if (url) URL.revokeObjectURL(url);
     this.urls.clear();
@@ -88,13 +96,13 @@ const BASE_STYLE = `
   mark.chm-find { background: #ffd54a; color: #1b1b1f; padding: 0; }
   mark.chm-find.chm-active { background: #ff9d3b; box-shadow: 0 0 0 2px #ff9d3b; }
 
-  /* Thin, modern scrollbars for the topic (no native stepper arrows). */
-  html { scrollbar-width: thin; scrollbar-color: rgba(135,135,150,0.6) transparent; }
+  /* Persistent custom scrollbars (no native stepper arrows, no auto-hiding
+     thin overlay). Firefox ignores ::-webkit-scrollbar, so it gets a thin
+     scrollbar via the @supports fallback. */
   ::-webkit-scrollbar { width: 12px; height: 12px; }
-  ::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-corner { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: rgba(135,135,150,0.6); border-radius: 7px;
+  ::-webkit-scrollbar-button { display: none; }
+  ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(135,135,150,0.55); border-radius: 7px;
     border: 3px solid transparent; background-clip: padding-box; }
   ::-webkit-scrollbar-thumb:hover { background: rgba(135,135,150,0.85); }
 
@@ -119,7 +127,7 @@ const BASE_STYLE = `
  * @param {BlobCache} blobs
  * @returns {string} HTML ready for iframe.srcdoc
  */
-export function renderTopic(reader, path, blobs) {
+export function renderTopic(reader, path, blobs, depth = 0) {
   const raw = reader.getText(path) || '';
   const doc = new DOMParser().parseFromString(raw, 'text/html');
 
@@ -159,9 +167,8 @@ export function renderTopic(reader, path, blobs) {
   // External stylesheets -> inline <style> with rewritten url()s.
   doc.querySelectorAll('link[rel~="stylesheet" i][href]').forEach((link) => {
     const cssPath = resolve(link.getAttribute('href'));
-    const cssBytes = reader.getFile(cssPath);
-    if (cssBytes) {
-      const css = new TextDecoder('utf-8').decode(cssBytes);
+    const css = reader.getText(cssPath); // charset-aware decode via the engine
+    if (css != null) {
       const style = doc.createElement('style');
       style.textContent = rewriteCssUrls(css, cssPath, reader, blobs);
       link.replaceWith(style);
@@ -179,11 +186,16 @@ export function renderTopic(reader, path, blobs) {
     if (s && s.includes('url(')) el.setAttribute('style', rewriteCssUrls(s, path, reader, blobs));
   });
 
-  // Frames -> blob: URLs of the (raw) target HTML, so simple framesets show.
+  // Frames -> a blob of the *recursively sanitized* target (its own CSP, no
+  // raw HTML, no network egress), so framesets render safely. A depth cap
+  // prevents frame-reference loops.
   doc.querySelectorAll('frame[src], iframe[src]').forEach((fr) => {
-    const url = blobs.urlFor(resolve(fr.getAttribute('src')));
-    if (url) fr.setAttribute('src', url);
-    else fr.removeAttribute('src');
+    const target = resolve(fr.getAttribute('src'));
+    if (depth < 3 && reader.hasFile(target)) {
+      fr.setAttribute('src', blobs.urlForHtml('frame:' + target, renderTopic(reader, target, blobs, depth + 1)));
+    } else {
+      fr.removeAttribute('src');
+    }
   });
 
   // Links: classify internal vs external; the host intercepts both.
@@ -221,7 +233,8 @@ function rewriteCssUrls(css, cssPath, reader, blobs) {
   let out = css.replace(/@import\s+[^;]+;/gi, '');
   out = out.replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/gi, (m, q, ref) => {
     const r = ref.trim();
-    if (/^(data:|blob:|https?:|#)/i.test(r)) return m;
+    if (/^(data:|blob:|#)/i.test(r)) return m;
+    if (/^[a-z][a-z0-9+.-]*:/i.test(r)) return 'none'; // external/unknown scheme — block egress
     const url = blobs.urlFor(reader.resolvePath(cssPath, r));
     return url ? `url("${url}")` : 'none';
   });

@@ -1,15 +1,17 @@
 // CHMate — content resolution: path -> bytes.
 //
 // Uncompressed entries are a raw slice of the file. Compressed (section 1)
-// entries live inside one big LZX stream that resets every `resetInterval`
-// frames; the ResetTable records the compressed offset of every frame so we
-// can decode just the reset block(s) covering the requested byte range.
-//
-// Decoded reset blocks are cached (LRU) so that a topic and all its images,
-// which cluster in the same reset block, decompress that block only once.
+// entries live inside one big LZX stream (reset every `resetInterval` frames,
+// with the ResetTable giving each frame's compressed offset). Because LZX
+// matches carry across reset boundaries, the whole MSCompressed stream is
+// decompressed once on first compressed read and cached for the reader's
+// lifetime; subsequent compressed reads are plain slices of that buffer.
 
 import { ByteReader } from './byte-reader.js';
 import { decompressStream, FRAME_SIZE } from './lzx.js';
+
+const RESET_TABLE_PATH =
+  '::DataSpace/Storage/MSCompressed/Transform/{7FC28940-9D31-11D0-9B27-00A0C91E9C7C}/InstanceData/ResetTable';
 
 /** Parse the `LZXC` ControlData record. */
 function parseControlData(bytes) {
@@ -18,13 +20,10 @@ function parseControlData(bytes) {
   const sig = String.fromCharCode(bytes[4], bytes[5], bytes[6], bytes[7]);
   r.skip(4);
   if (sig !== 'LZXC') throw new Error(`Unsupported compression signature ${JSON.stringify(sig)}`);
-  const version = r.u32();
-  const resetInterval = r.u32(); // in frames
+  r.u32(); // version
+  const resetInterval = Math.max(1, r.u32()); // frames between resets (guard against 0)
   const windowSizeFrames = r.u32(); // window size in 0x8000-byte frames
-  const cacheSize = r.u32();
-
-  const windowSize = windowSizeFrames * FRAME_SIZE;
-  return { version, resetInterval, windowSize, cacheSize };
+  return { resetInterval, windowSize: windowSizeFrames * FRAME_SIZE };
 }
 
 /** Parse the LZX ResetTable: per-frame compressed offsets. */
@@ -37,8 +36,10 @@ function parseResetTable(bytes) {
   const uncompressedLength = r.u64();
   const compressedLength = r.u64();
   const frameSize = r.u64(); // 0x8000
-  const offsets = new Array(numEntries);
-  for (let i = 0; i < numEntries; i++) offsets[i] = r.u64();
+  // Clamp against the buffer so a hostile header can't request a huge alloc.
+  const n = Math.min(numEntries, Math.max(0, Math.floor((bytes.length - 40) / 8)));
+  const offsets = new Array(n);
+  for (let i = 0; i < n; i++) offsets[i] = r.u64();
   return { uncompressedLength, compressedLength, frameSize, offsets };
 }
 
@@ -56,13 +57,6 @@ export class ContentResolver {
 
   has(path) {
     return this.dir.map.has(normalise(path));
-  }
-
-  /** List all real (non-directory) file paths. */
-  list() {
-    return this.dir.entries
-      .filter((e) => e.length > 0 || (e.name !== '/' && !e.name.endsWith('/')))
-      .map((e) => e.name);
   }
 
   /**
@@ -88,12 +82,12 @@ export class ContentResolver {
     if (!cd) throw new Error('CHM has compressed content but no ControlData');
     const control = parseControlData(cd);
 
-    let resetTableBytes = null;
-    for (const e of this.dir.entries) {
-      if (e.name.includes('/InstanceData/ResetTable') || e.name.endsWith('ResetTable')) {
-        resetTableBytes = this.getFile(e.name);
-        break;
-      }
+    // The ResetTable lives at a canonical path; fall back to a name match only
+    // if a writer used a different transform GUID.
+    let resetTableBytes = this.getFile(RESET_TABLE_PATH);
+    if (!resetTableBytes) {
+      const e = this.dir.entries.find((x) => x.name.endsWith('/InstanceData/ResetTable'));
+      if (e) resetTableBytes = this.getFile(e.name);
     }
     if (!resetTableBytes) throw new Error('CHM has compressed content but no ResetTable');
     const reset = parseResetTable(resetTableBytes);
