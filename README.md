@@ -5,6 +5,10 @@ No plugins, no native modules, no WASM. It parses the ITSS/ITSF container and
 decompresses LZX entirely in JavaScript, then renders each Help topic in a
 strictly sandboxed iframe.
 
+<p align="center">
+  <a href="https://alpaq92.github.io/CHMate/"><img src="assets/screenshot.png" alt="CHMate reading the PuTTY User Manual" width="900" /></a>
+</p>
+
 ### ▶ Live demo
 
 **https://alpaq92.github.io/CHMate/** — open a `.chm` from your machine (it
