@@ -1,5 +1,3 @@
-<p align="center"><img src="assets/logo.svg" width="92" height="92" alt="CHMate logo" /></p>
-
 # CHMate
 
 **A pure-JavaScript reader for Microsoft Compiled HTML Help (`.chm`) files — like PDF.js, but for `.chm`.**
