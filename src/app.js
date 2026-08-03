@@ -643,15 +643,15 @@ function init() {
   const url = params.get('file');
   const page = params.get('page');
   const search = params.get('search');
-  const zoom = params.get('zoom');
+  const zoom = parseInt(params.get('zoom'));
   if (url) {
     fetch(url)
       .then((r) => r.arrayBuffer())
       .then((b) => openBuffer(b, url.split('/').pop()))
       .then(() => {
-          if (page) { navigate(page) }
-          if (zoom) { setZoom(zoom) }
+          if (!isNaN(zoom)) { setZoom(zoom) }
           if (search) { runFind(search, 0) }
+          if (page) { navigate(page) }
       })
       .catch((err) => dropError('Could not load ' + url + ': ' + err.message));
   }
