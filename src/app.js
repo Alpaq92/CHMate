@@ -639,11 +639,20 @@ function init() {
   initResizer();
 
   // Allow ?file=URL to auto-load a CHM (same-origin).
-  const url = new URLSearchParams(location.search).get('file');
+  const params = new URLSearchParams(location.search);
+  const url = params.get('file');
+  const page = params.get('page');
+  const search = params.get('search');
+  const zoom = params.get('zoom');
   if (url) {
     fetch(url)
       .then((r) => r.arrayBuffer())
       .then((b) => openBuffer(b, url.split('/').pop()))
+      .then(() => {
+          if (page) { navigate(page) }
+          if (zoom) { setZoom(zoom) }
+          if (search) { runFind(search, 0) }
+      })
       .catch((err) => dropError('Could not load ' + url + ': ' + err.message));
   }
 }
