@@ -11,9 +11,10 @@ strictly sandboxed iframe.
 
 ### ▶ Live demo
 
-**https://alpaq92.github.io/CHMate/** — open a `.chm` from your machine (it
-never leaves the browser) or load the bundled PuTTY manual. Deployed
-automatically from `main` via GitHub Actions ([`.github/workflows/pages.yml`](.github/workflows/pages.yml)).
+**https://alpaq92.github.io/CHMate/** — open a `.chm` from your machine — it is
+parsed locally and never leaves the browser — or load the bundled PuTTY manual.
+Deployed automatically from `main` via GitHub Actions
+([`.github/workflows/pages.yml`](.github/workflows/pages.yml)).
 
 ---
 
