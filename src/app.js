@@ -643,13 +643,13 @@ function init() {
   const url = params.get('file');
   const page = params.get('page');
   const search = params.get('search');
-  const zoom = parseInt(params.get('zoom'));
+  const zoom = Number(params.get('zoom'));
   if (url) {
     fetch(url)
       .then((r) => r.arrayBuffer())
       .then((b) => openBuffer(b, url.split('/').pop()))
       .then(() => {
-          if (!isNaN(zoom)) { setZoom(zoom) }
+          if (Number.isInteger(zoom)) { setZoom(zoom) }
           if (search) { runFind(search, 0) }
           if (page) { navigate(page) }
       })
