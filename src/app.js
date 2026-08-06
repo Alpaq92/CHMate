@@ -643,7 +643,8 @@ function init() {
   const url = params.get('file');
   const page = params.get('page');
   const search = params.get('search');
-  const zoom = Number(params.get('zoom'));
+  const zoomRaw = params.get('zoom');
+  const zoom = (zoomRaw && zoomRaw.trim()) ? Number(zoomRaw) : null;
   if (url) {
     fetch(url)
       .then((r) => r.arrayBuffer())
