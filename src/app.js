@@ -639,6 +639,12 @@ function init() {
   initResizer();
 
   // Allow ?file=URL to auto-load a CHM (same-origin).
+  //
+  // Additional optional parameters are:
+  //
+  // * &page=<topic path> (See right end of footer on a loaded document)
+  // * &search=<query> (Any string that would be typed into the search field)
+  // * &zoom=<percent> (Non-integers will be ignored. Clamped to 40-300)
   const params = new URLSearchParams(location.search);
   const url = params.get('file');
   const page = params.get('page');
