@@ -9,7 +9,9 @@ here is GPL/LGPL.
 | Content resolution, ResetTable/ControlData (`src/chm/content.js`) | Own implementation | MIT |
 | `#SYSTEM` / `#WINDOWS`, sitemap (`.hhc`/`.hhk`), encoding, reader API | Own implementation | MIT |
 | **LZX decompressor** (`src/chm/lzx.js`) | Own implementation, written against the [\[MS-PATCH\] LZX spec](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-patch/) | MIT |
-| Browser UI, sanitizer, renderer (`index.html`, `css/`, `src/app.js`, `src/render.js`) | Own implementation | MIT |
+| Browser UI, sanitizer, renderer (`index.html`, `css/`, `src/app.js`, `src/render.js`) | Own implementation (icon glyphs and some palette values credited below) | MIT |
+| Icon glyphs (inline SVG paths in `index.html`, `src/app.js`, `assets/logo.svg`) | [Tabler Icons](https://tabler.io/icons) © Paweł Kuna | MIT |
+| Some palette values (logo teals, light-theme red — marked `open-color` in `css/style.css`) | [Open Color](https://yeun.github.io/open-color/) | MIT |
 | Demo file (`samples/putty.chm`) | PuTTY documentation © Simon Tatham et al. | PuTTY (MIT-style) — see `samples/putty.chm.LICENCE` |
 
 ## LZX decoder

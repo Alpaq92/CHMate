@@ -1,8 +1,11 @@
-/* CHMate — dark theme inspired by modern document viewers (PDF.js / Aspose /
+/* CHMate — UI inspired by modern document viewers (PDF.js / Aspose /
    Syncfusion): a compact top toolbar, a tabbed navigation sidebar, and the
-   topic rendered as a "page" floating on a dark canvas. */
+   topic rendered as a "page" floating on a canvas. The chrome follows the
+   OS theme: dark palette below, light overrides in the media query. The
+   document theme is separate (btnTheme cycles it, see setDocTheme). */
 
 :root {
+  color-scheme: dark;
   --bg: #15151a;
   --bg-toolbar: #232329;
   --bg-toolbar-2: #2b2b33;
@@ -22,11 +25,40 @@
   --danger: #ff6b6b;
   --mark: #ffd54a;
   --mark-active: #ff9d3b;
+  --accent-text: #cfe0ff;
+  --overlay: rgba(18, 18, 22, 0.72);
+  --scroll: #4a4a55;
+  --scroll-hover: #5b5b69;
   --radius: 7px;
   --toolbar-h: 46px;
   --status-h: 24px;
   --sidebar-w: 300px;
   --font: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+}
+
+/* Light chrome when the OS prefers it. Accent, logo and find-mark colors are
+   shared between themes. */
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --bg: #f4f4f7;
+    --bg-toolbar: #ffffff;
+    --bg-toolbar-2: #f0f0f4;
+    --bg-sidebar: #fafafb;
+    --bg-canvas: #e8e8ed;
+    --bg-elev: #e6e6ec;
+    --border: #d7d7e0;
+    --border-soft: #e5e5eb;
+    --text: #1e1e26;
+    --text-2: #5a5a64;
+    --text-3: #8b8b95;
+    --accent-soft: rgba(59, 123, 255, 0.14);
+    --danger: #c92a2a; /* open-color red 9 */
+    --accent-text: #1f55cc;
+    --overlay: rgba(244, 244, 247, 0.72);
+    --scroll: #b9b9c3;
+    --scroll-hover: #a4a4af;
+  }
 }
 
 * { box-sizing: border-box; }
@@ -164,7 +196,7 @@ html, body {
   color: var(--text); font-size: 13px; line-height: 1.35;
 }
 .tree .row:hover { background: var(--bg-elev); }
-.tree .row.active { background: var(--accent-soft); color: #cfe0ff; }
+.tree .row.active { background: var(--accent-soft); color: var(--accent-text); }
 .tree .twist {
   width: 16px; flex: 0 0 16px; display: inline-flex; align-items: center; justify-content: center;
   color: var(--text-3); transition: transform 0.12s; cursor: pointer;
@@ -185,7 +217,7 @@ html, body {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .list .item:hover { background: var(--bg-elev); }
-.list .item.active { background: var(--accent-soft); color: #cfe0ff; }
+.list .item.active { background: var(--accent-soft); color: var(--accent-text); }
 .list .item.sub { padding-left: 22px; color: var(--text-2); }
 .list .empty { padding: 16px; color: var(--text-3); font-size: 13px; text-align: center; }
 
@@ -211,7 +243,7 @@ html, body {
 }
 .rail-btn:hover { background: var(--bg-elev); color: var(--text); }
 .rail-btn .gi { width: 19px; height: 19px; }
-.rail-tab.active { background: var(--accent-soft); color: #cfe0ff; }
+.rail-tab.active { background: var(--accent-soft); color: var(--accent-text); }
 .rail-sep { width: 22px; height: 1px; background: var(--border); margin: 3px 0 5px; }
 
 /* ---------- Viewer ---------- */
@@ -241,7 +273,7 @@ html, body {
 .spinner {
   position: absolute; inset: 0; display: flex; gap: 12px;
   align-items: center; justify-content: center;
-  background: rgba(18, 18, 22, 0.72); color: var(--text-2); font-size: 14px;
+  background: var(--overlay); color: var(--text-2); font-size: 14px;
 }
 .spinner.hidden { display: none; }
 .spinner .dot {
@@ -266,10 +298,10 @@ html, body {
 ::-webkit-scrollbar-button { display: none; }
 ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: #4a4a55; border-radius: 7px;
+  background: var(--scroll); border-radius: 7px;
   border: 3px solid transparent; background-clip: padding-box;
 }
-::-webkit-scrollbar-thumb:hover { background: #5b5b69; }
+::-webkit-scrollbar-thumb:hover { background: var(--scroll-hover); }
 
 @media (max-width: 720px) {
   .app-name, .btn .lbl { display: none; }

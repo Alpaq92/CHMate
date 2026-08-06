@@ -24,8 +24,10 @@ automatically from `main` via GitHub Actions ([`.github/workflows/pages.yml`](.g
 - **Faithful decoding** — validated byte-for-byte against 13 real `.chm` files
   (1,400+ internal files), including PuTTY's 270 KB manual and Windows system
   Help files.
-- **Modern dark reader UI** — Contents / Index / Files sidebar, history
+- **Modern reader UI** — Contents / Index / Files sidebar, history
   (back/forward), zoom, find-in-page, print, drag-and-drop, keyboard shortcuts.
+  The app chrome follows your OS light/dark theme; the document area has its
+  own light/dark/system toggle.
 - **Security first** — every untrusted topic is sanitized and rendered inside a
   fully `sandbox`ed iframe with a strict Content-Security-Policy; scripts are
   stripped out, internal resources are served from in-memory `blob:` URLs, and
