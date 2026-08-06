@@ -650,7 +650,10 @@ function init() {
       .then((b) => openBuffer(b, url.split('/').pop()))
       .then(() => {
           if (Number.isInteger(zoom)) { setZoom(zoom) }
-          if (search) { runFind(search, 0) }
+          if (search) {
+            findInput.value = search;
+            runFind(search, 0)
+          }
           if (page) { navigate(page) }
       })
       .catch((err) => dropError('Could not load ' + url + ': ' + err.message));
