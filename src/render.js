@@ -228,6 +228,42 @@ export function renderTopic(reader, path, blobs, depth = 0) {
   return '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
 }
 
+const TEXT_EXT = /\.(css|js|txt|json|xml|log|ini|inf|hhc|hhk|hhp)$/i;
+const IMAGE_EXT = /\.(png|jpe?g|gif|bmp|ico|svg|webp)$/i;
+const escapeHtml = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+
+/**
+ * Build a viewer page for a non-topic file (stylesheet, image, …) so the
+ * Files panel can show it inside the sandboxed frame instead of a new tab.
+ * Same CSP/base-style/theme shell as topics; text is escaped, images load
+ * from their blob: URL, anything else gets a one-line summary.
+ * @returns {string} HTML ready for iframe.srcdoc
+ */
+export function renderResource(reader, path, blobs) {
+  let body;
+  if (IMAGE_EXT.test(path)) {
+    const url = blobs.urlFor(path);
+    body = url ? `<img class="chm-res-img" src="${url}" alt="${escapeHtml(path)}">` : '<p class="chm-res-info">Missing file.</p>';
+  } else if (TEXT_EXT.test(path)) {
+    body = `<pre class="chm-res-text">${escapeHtml(reader.getText(path) || '')}</pre>`;
+  } else {
+    const bytes = reader.getFile(path);
+    body = `<p class="chm-res-info">${escapeHtml(path)} — ${bytes ? bytes.length : 0} bytes (${mimeOf(path)}), no inline preview for this type.</p>`;
+  }
+  const style =
+    BASE_STYLE +
+    `
+  pre.chm-res-text { margin: 0; font: 12.5px/1.55 ui-monospace, Consolas, "Courier New", monospace; white-space: pre-wrap; }
+  img.chm-res-img { display: block; margin: 0 auto; }
+  p.chm-res-info { color: #55555f; font: 13px system-ui, sans-serif; }`;
+  return (
+    '<!DOCTYPE html>\n<html><head>' +
+    `<meta http-equiv="Content-Security-Policy" content="${CSP}">` +
+    `<style>${style}</style>` +
+    `</head><body>${body}</body></html>`
+  );
+}
+
 function rewriteCssUrls(css, cssPath, reader, blobs) {
   // Drop @import (would pull external/inaccessible resources) and rewrite url().
   let out = css.replace(/@import\s+[^;]+;/gi, '');

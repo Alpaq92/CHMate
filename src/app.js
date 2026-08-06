@@ -5,7 +5,7 @@
 // ./chm; this file is pure DOM glue.
 
 import { ChmReader, stripAnchor } from './chm/chm-reader.js';
-import { renderTopic, BlobCache } from './render.js';
+import { renderTopic, renderResource, BlobCache } from './render.js';
 
 const $ = (id) => document.getElementById(id);
 const app = $('app');
@@ -138,7 +138,10 @@ function navigate(path, opts = {}) {
     return;
   }
 
-  const html = renderTopic(reader, target, state.blobs);
+  // Topics render sanitized; other files (css, images, …) get a viewer page.
+  const html = /\.html?$/i.test(target)
+    ? renderTopic(reader, target, state.blobs)
+    : renderResource(reader, target, state.blobs);
   const frame = $('frame');
   frame.classList.remove('hidden');
   frame.onload = () => onFrameLoad(frag);
@@ -344,17 +347,9 @@ function buildFiles(reader) {
     div.className = 'item';
     div.textContent = p;
     div.dataset.search = p.toLowerCase();
-    div.addEventListener('click', () => {
-      if (/\.html?$/i.test(p)) navigate(p);
-      else openResource(p);
-    });
+    div.addEventListener('click', () => navigate(p));
     host.appendChild(div);
   }
-}
-
-function openResource(path) {
-  const url = state.blobs.urlFor(path);
-  if (url) window.open(url, '_blank', 'noopener');
 }
 
 function filterList(hostId, term) {
