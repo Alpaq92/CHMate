@@ -27,8 +27,8 @@ Deployed automatically from `main` via GitHub Actions
   Help files.
 - **Modern reader UI** — Contents / Index / Files sidebar, history
   (back/forward), zoom, find-in-page, print, drag-and-drop, keyboard shortcuts.
-  The app chrome follows your OS light/dark theme; the document area has its
-  own light/dark/system toggle.
+  The theme toggle (light / dark / follow the OS) drives the whole app —
+  toolbar, sidebar and the document area alike.
 - **Security first** — every untrusted topic is sanitized and rendered inside a
   fully `sandbox`ed iframe with a strict Content-Security-Policy; scripts are
   stripped out, internal resources are served from in-memory `blob:` URLs, and

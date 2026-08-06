@@ -56,7 +56,10 @@ function setDocTheme(mode) {
   }
   const btn = $('btnTheme');
   btn.innerHTML = icon(THEME_ICON[state.docTheme]);
-  btn.title = 'Document theme: ' + THEME_LABEL[state.docTheme] + ' (click to change)';
+  btn.title = 'Theme: ' + THEME_LABEL[state.docTheme] + ' (click to change)';
+  // Mirror the choice onto the app chrome; 'system' defers to the OS media query.
+  if (state.docTheme === 'system') delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = state.docTheme;
   applyDocTheme();
 }
 

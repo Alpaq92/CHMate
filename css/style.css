@@ -36,10 +36,12 @@
   --font: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
 }
 
-/* Light chrome when the OS prefers it. Accent, logo and find-mark colors are
-   shared between themes. */
+/* Light chrome. Applies when the OS prefers light (unless the in-app toggle
+   forces dark) and when the toggle forces light — setDocTheme() stamps the
+   choice on <html data-theme>. Keep this block and the [data-theme="light"]
+   copy below in sync. Accent, logo and find-mark colors are shared. */
 @media (prefers-color-scheme: light) {
-  :root {
+  :root:not([data-theme='dark']) {
     color-scheme: light;
     --bg: #f4f4f7;
     --bg-toolbar: #ffffff;
@@ -59,6 +61,26 @@
     --scroll: #b9b9c3;
     --scroll-hover: #a4a4af;
   }
+}
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #f4f4f7;
+  --bg-toolbar: #ffffff;
+  --bg-toolbar-2: #f0f0f4;
+  --bg-sidebar: #fafafb;
+  --bg-canvas: #e8e8ed;
+  --bg-elev: #e6e6ec;
+  --border: #d7d7e0;
+  --border-soft: #e5e5eb;
+  --text: #1e1e26;
+  --text-2: #5a5a64;
+  --text-3: #8b8b95;
+  --accent-soft: rgba(59, 123, 255, 0.14);
+  --danger: #c92a2a; /* open-color red 9 */
+  --accent-text: #1f55cc;
+  --overlay: rgba(244, 244, 247, 0.72);
+  --scroll: #b9b9c3;
+  --scroll-hover: #a4a4af;
 }
 
 * { box-sizing: border-box; }
