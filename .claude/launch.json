@@ -6,6 +6,12 @@
       "runtimeExecutable": "node",
       "runtimeArgs": ["tools/serve.mjs", "8099"],
       "port": 8099
+    },
+    {
+      "name": "chmate-static",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8080", "--bind", "127.0.0.1"],
+      "port": 8080
     }
   ]
 }
