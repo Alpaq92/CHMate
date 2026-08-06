@@ -1,14 +1,21 @@
-# Deploy CHMate to GitHub Pages.
+# Deploy CHMate to GitHub Pages — manual fallback only.
 #
-# CHMate is a no-build static site (plain ES modules), so this just uploads the
-# repository root as the Pages artifact. Enable once under
-# Settings → Pages → "Build and deployment" → Source: GitHub Actions.
+# CHMate is a no-build static site (plain ES modules). Since 2026-08-06 the
+# site deploys via the classic branch build (Settings → Pages → Source:
+# "Deploy from a branch", main, / root) because the Actions deployment
+# backend kept failing for this site: deployments sat in deployment_queued
+# until timeout, later were cancelled seconds after creation — with a valid
+# artifact, valid config and no reported GitHub incident. A .nojekyll file
+# keeps the branch build byte-exact (no Jekyll processing).
+#
+# This workflow is kept as a manual fallback for when the Actions path is
+# healthy again: switch Settings → Pages → Source back to "GitHub Actions",
+# then run this workflow from the Actions tab. Do not re-add a push trigger
+# while the site uses branch builds — every run would fail and paint main red.
 
 name: Deploy to GitHub Pages
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
