@@ -102,16 +102,18 @@ async function openBuffer(buffer, name) {
     console.error(err);
     dropError('Could not open this file: ' + err.message);
     status('Failed to open ' + name);
+    return false;
   } finally {
     showSpinner(false);
   }
+  return true;
 }
 
 async function openFile(file) {
-  if (!file) return;
+  if (!file) return false;
   dropError('');
   const buf = await file.arrayBuffer();
-  await openBuffer(buf, file.name);
+  return await openBuffer(buf, file.name);
 }
 
 // ---------------------------------------------------------------------------
@@ -655,7 +657,9 @@ function init() {
     fetch(url)
       .then((r) => r.arrayBuffer())
       .then((b) => openBuffer(b, url.split('/').pop()))
-      .then(() => {
+      .then((success) => {
+          if (!success) return;
+
           if (Number.isInteger(zoom)) { setZoom(zoom) }
           if (search) {
             findInput.value = search;
