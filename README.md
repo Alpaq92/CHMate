@@ -100,7 +100,7 @@ CHM is a legacy *and* an active malware vector. CHMate treats every topic as
 hostile:
 
 - rendered in `<iframe sandbox="allow-same-origin">` — **no** `allow-scripts`,
-  so content JavaScript never runs;
+  so JavaScript from the help file never executes at all;
 - a strict CSP (`default-src 'none'`; only `blob:`/`data:` for images, styles,
   fonts) blocks all network access;
 - `<script>`, event-handler attributes and `javascript:`/`vbscript:`/`ms-its:`
