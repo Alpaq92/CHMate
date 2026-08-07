@@ -660,12 +660,12 @@ function init() {
       .then((success) => {
           if (!success) return;
 
-          if (Number.isInteger(zoom)) { setZoom(zoom) }
+          if (Number.isInteger(zoom)) setZoom(zoom)
           if (search) {
             findInput.value = search;
             runFind(search, 0)
           }
-          if (page) { navigate(page) }
+          if (page) navigate(page)
       })
       .catch((err) => dropError('Could not load ' + url + ': ' + err.message));
   }
