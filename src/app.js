@@ -105,16 +105,18 @@ async function openBuffer(buffer, name) {
     console.error(err);
     dropError('Could not open this file: ' + err.message);
     status('Failed to open ' + name);
+    return false;
   } finally {
     showSpinner(false);
   }
+  return true;
 }
 
 async function openFile(file) {
-  if (!file) return;
+  if (!file) return false;
   dropError('');
   const buf = await file.arrayBuffer();
-  await openBuffer(buf, file.name);
+  return await openBuffer(buf, file.name);
 }
 
 // ---------------------------------------------------------------------------
@@ -637,11 +639,33 @@ function init() {
   initResizer();
 
   // Allow ?file=URL to auto-load a CHM (same-origin).
-  const url = new URLSearchParams(location.search).get('file');
+  //
+  // Additional optional parameters are:
+  //
+  // * &page=<topic path> (See right end of footer on a loaded document)
+  // * &search=<query> (Any string that would be typed into the search field)
+  // * &zoom=<percent> (Non-integers will be ignored. Clamped to 40-300)
+  const params = new URLSearchParams(location.search);
+  const url = params.get('file');
+  const page = params.get('page');
+  const search = params.get('search');
+  const zoomRaw = params.get('zoom');
+  const zoom = (zoomRaw && zoomRaw.trim()) ? Number(zoomRaw) : null;
+  if (Number.isInteger(zoom)) setZoom(zoom);
+
   if (url) {
     fetch(url)
       .then((r) => r.arrayBuffer())
       .then((b) => openBuffer(b, url.split('/').pop()))
+      .then((success) => {
+        if (!success) return;
+
+        if (search) {
+          findInput.value = search;
+          runFind(search, 0);
+        }
+        if (page) navigate(page);
+      })
       .catch((err) => dropError('Could not load ' + url + ': ' + err.message));
   }
 }
