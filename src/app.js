@@ -653,6 +653,8 @@ function init() {
   const search = params.get('search');
   const zoomRaw = params.get('zoom');
   const zoom = (zoomRaw && zoomRaw.trim()) ? Number(zoomRaw) : null;
+  if (Number.isInteger(zoom)) setZoom(zoom)
+
   if (url) {
     fetch(url)
       .then((r) => r.arrayBuffer())
@@ -660,7 +662,6 @@ function init() {
       .then((success) => {
           if (!success) return;
 
-          if (Number.isInteger(zoom)) setZoom(zoom)
           if (search) {
             findInput.value = search;
             runFind(search, 0)
